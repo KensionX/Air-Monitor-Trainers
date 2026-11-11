@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PID Monitor Trainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one handheld instrument centred on a dark bench, test conditions and reference stacked beneath it. Single theme by choice. */
+:root{
+  color-scheme: dark;
+  --bench:#12161a;
+  --panel:#1c232a;
+  --line:#2f3942;
+  --ink:#e7ecef;
+  --muted:#94a2ad;
+  --shell:#2a3037;
+  --shell-hi:#3a424b;
+  --accent:#f0a23b;
+  --lcd:#cfe2ea;
+  --lcd-ink:#10181c;
+  --crit:#e5484d;
+  --ok:#4cc38a;
+  --f-ui:"IBM Plex Sans Condensed","Arial Narrow",Arial,sans-serif;
+  --f-lcd:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bench);color:var(--ink);font-family:var(--f-ui);-webkit-text-size-adjust:100%}
+body{padding:16px 16px 40px;display:flex;flex-direction:column;align-items:center;gap:16px}
+header{width:100%;max-width:400px}
+h1{font-size:22px;margin:0;font-weight:700;letter-spacing:.02em}
+header p{margin:4px 0 0;color:var(--muted);font-size:14px;line-height:1.35}
+button{font-family:inherit;color:inherit}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- instrument ---------- */
+.unit{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center}
+.probe{width:26px;height:34px;background:linear-gradient(90deg,#555e68,#8b959f,#555e68);border-radius:6px 6px 0 0;position:relative}
+.torch{position:absolute;left:50%;top:-6px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#3b4148}
+.torch.on{background:#fff7d6;box-shadow:0 0 18px 10px rgba(255,240,170,.55)}
+.shell{width:100%;background:linear-gradient(180deg,var(--shell-hi),var(--shell));border-radius:26px;padding:14px 16px 18px;border:1px solid #454e58;box-shadow:0 14px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:12px;touch-action:manipulation}
+.leds{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.led{flex:1;height:10px;border-radius:5px;background:#4a2326;border:1px solid #1a1d21}
+.led.on{background:#ff3b3b;box-shadow:0 0 14px 4px rgba(255,60,60,.7)}
+.badge{font-size:11px;letter-spacing:.18em;color:var(--muted);font-weight:600;white-space:nowrap}
+.lcdwrap{background:#0d1013;border-radius:12px;padding:8px;position:relative}
+.lcd{background:var(--lcd);color:var(--lcd-ink);border-radius:6px;height:196px;font-family:var(--f-lcd);font-weight:500;display:flex;flex-direction:column;overflow:hidden;position:relative;user-select:none;-webkit-user-select:none}
+.lcd.off{background:#59635a}
+.lcd.nolight{background:#8d9a8c}
+.lcd .dark{position:absolute;inset:0;background:#10181c;pointer-events:none}
+.lcd .in{display:flex;flex-direction:column;height:100%}
+.l-head{display:flex;justify-content:space-between;gap:6px;padding:4px 8px 0;font-size:14px;min-height:24px;align-items:center}
+.l-head b{font-weight:700}
+.l-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:4px 8px;gap:2px;min-height:0}
+.row{display:flex;justify-content:space-between;gap:8px;font-size:16px;line-height:1.3;padding:1px 4px;white-space:pre}
+.row.c{justify-content:center;text-align:center;white-space:pre-wrap}
+.row.hl{background:var(--lcd-ink);color:var(--lcd)}
+.row.boxed{font-size:22px;font-weight:700;letter-spacing:.08em;border:1.5px solid var(--lcd-ink);align-self:center;padding:2px 18px;margin:4px 0}
+.row.ind{padding-left:22px}
+.row{align-items:center;overflow:hidden}
+.row>span:first-child{overflow:hidden;text-overflow:clip;min-width:0}
+.row i{flex:none;width:13px;height:13px;border:1.5px solid currentColor;margin-right:6px;display:inline-block;position:relative}
+.row i.rad{border-radius:50%}
+.row i.on::after{content:"";position:absolute;inset:2px;background:currentColor;border-radius:inherit}
+.row:has(i){justify-content:flex-start}
+.icons{display:grid;grid-template-columns:repeat(5,1fr);border:1.5px solid var(--lcd-ink)}
+.icons span{font-size:12px;font-weight:700;text-align:center;white-space:pre-line;line-height:1.15;min-height:44px;display:flex;align-items:center;justify-content:center}
+.icons span+span{border-left:1.5px solid var(--lcd-ink)}
+.icons span.on{background:var(--lcd-ink);color:var(--lcd)}
+.l-soft span{display:flex;align-items:center;justify-content:center}
+.l-body{position:relative}
+.corner{position:absolute;right:8px;bottom:4px;font-size:13px}
+.stat{display:inline-flex;align-items:center;gap:5px;flex:none}
+.row.big{font-size:22px;font-weight:700;letter-spacing:.08em}
+.row .cur{background:var(--lcd-ink);color:var(--lcd)}
+.row .r{opacity:.85;overflow:hidden;text-overflow:ellipsis}
+.read{display:flex;align-items:baseline;justify-content:flex-end;gap:8px;padding-right:18px}
+.read .v{font-size:54px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.read .u{font-size:15px}
+.read .uw{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05}
+.read .ck{font-size:19px;font-weight:700}
+.row.strike span{text-decoration:line-through}
+.alarm{font-weight:700;font-size:15px;text-align:center;min-height:20px;letter-spacing:.1em}
+.l-soft{display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--lcd-ink);color:var(--lcd);font-size:13px;font-weight:700;min-height:26px;margin:0 6px 6px}
+.l-soft span{text-align:center;padding:3px 2px;white-space:nowrap;overflow:hidden}
+.l-soft span+span{border-left:2px solid var(--lcd)}
+.keys{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.key{height:62px;border-radius:14px;border:1px solid #14171a;background:linear-gradient(180deg,#4b545e,#353c44);font-size:18px;font-weight:700;letter-spacing:.04em;color:var(--accent);box-shadow:0 4px 0 #15181b;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
+.key.down{transform:translateY(3px);box-shadow:0 1px 0 #15181b;background:linear-gradient(180deg,#3b434b,#2c3238)}
+.lowrow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.lowrow .small{justify-self:end}
+.lightkey{width:58px;height:58px;border-radius:50%;border:1px solid #14171a;background:linear-gradient(180deg,#4b545e,#353c44);color:var(--accent);box-shadow:0 4px 0 #15181b;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.lightkey:active{transform:translateY(3px);box-shadow:0 1px 0 #15181b}
+.lightkey[aria-pressed="true"]{background:var(--accent);color:#1b1407}
+.small{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;height:40px;padding:0 14px;border-radius:10px;border:1px solid #14171a;background:#3a424b;font-size:14px;font-weight:600;cursor:pointer}
+.small[aria-pressed="true"]{background:var(--accent);color:#1b1407}
+
+/* ---------- panels ---------- */
+.panel{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.panel h2{margin:0;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg button{min-height:44px;border-radius:10px;border:1px solid var(--line);background:#232b33;font-size:15px;font-weight:600;cursor:pointer;padding:6px 8px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#1b1407;border-color:var(--accent)}
+.field{display:flex;flex-direction:column;gap:6px;font-size:15px}
+.field output{font-family:var(--f-lcd);color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent);height:32px}
+.field.inline{flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
+input[type=number]{width:120px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:#232b33;color:var(--ink);font:inherit;font-size:16px;padding:6px 10px;font-family:var(--f-lcd)}
+.check{display:flex;align-items:center;gap:10px;font-size:15px;min-height:40px}
+.check input{width:22px;height:22px;accent-color:var(--accent)}
+.wide{min-height:48px;border-radius:10px;border:1px solid var(--line);background:#232b33;font-size:15px;font-weight:600;cursor:pointer;padding:8px 12px;text-align:left}
+select{width:100%;min-height:46px;border-radius:10px;border:1px solid var(--line);background:#232b33;color:var(--ink);font:inherit;font-size:16px;padding:8px 10px}
+.cfout{margin:0;font-size:15px;line-height:1.5}
+.cfout b{font-family:var(--f-lcd);color:var(--accent);font-size:17px}
+.cfout .no{color:#ff9a9d;font-weight:600}
+.hint{color:var(--muted);font-size:13px;line-height:1.4;margin:0}
+details{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 14px}
+summary{cursor:pointer;font-weight:600;font-size:15px;padding:10px 0}
+details dl{margin:0 0 12px;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px;line-height:1.4}
+details dt{font-weight:700;color:var(--accent);white-space:nowrap}
+details dd{margin:0;color:var(--ink)}
+details p{font-size:13px;color:var(--muted);line-height:1.45;margin:0 0 12px}
+
+/* ---------- critical error ---------- */
+.veil{position:fixed;inset:0;background:rgba(8,10,12,.82);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+.veil.show{display:flex}
+.crit{width:100%;max-width:380px;background:#221416;border:2px solid var(--crit);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px;max-height:100%;overflow:auto}
+.crit h2{margin:0;font-size:20px;color:#ff8f93;letter-spacing:.04em;text-wrap:balance}
+.crit .tag{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0}
+.crit .what{font-family:var(--f-lcd);background:#150c0d;border-radius:8px;padding:10px;font-size:14px;line-height:1.45;margin:0;overflow-wrap:anywhere}
+.crit .why{margin:0;font-size:15px;line-height:1.45}
+.crit .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.crit button{min-height:52px;border-radius:12px;font-size:17px;font-weight:700;cursor:pointer;border:1px solid transparent}
+#undoBtn{background:var(--accent);color:#1b1407}
+#resetBtn{background:transparent;border-color:#ff8f93;color:#ffb3b6}
+.crit small{color:var(--muted);font-size:13px;line-height:1.4}
+@media (prefers-reduced-motion:reduce){.key.down{transform:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>PID Monitor Trainer</h1>
+  <p>Practice the MiniRAE 3000 key presses, screens and settings without the monitor. Unofficial training aid. It does not measure gas.</p>
+</header>
+
+<section class="unit" aria-label="Simulated monitor">
+  <div class="probe"><div class="torch" id="torch"></div></div>
+  <div class="shell">
+    <div class="leds"><div class="led" id="ledL"></div><span class="badge">PID TRAINER</span><div class="led" id="ledR"></div></div>
+    <div class="lcdwrap"><div class="lcd off" id="lcd" role="status" aria-live="off"></div></div>
+    <div class="keys">
+      <button class="key" data-k="Y" id="keyY" type="button">Y/+</button>
+      <button class="key" data-k="M" id="keyM" type="button" aria-label="MODE (power)"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true" style="pointer-events:none;vertical-align:middle"><path d="M12 3v8"/><path d="M6.5 7a8 8 0 1 0 11 0"/></svg></button>
+      <button class="key" data-k="N" id="keyN" type="button">N/&minus;</button>
+    </div>
+    <div class="lowrow">
+      <span></span>
+      <button class="lightkey" id="lightBtn" type="button" aria-pressed="false" aria-label="Flashlight key"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="pointer-events:none"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg></button>
+      <button class="small" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    </div>
+  </div>
+</section>
+
+<section class="panel" aria-label="Correction factor look-up">
+  <h2>Vapor at the inlet</h2>
+  <label class="field" for="cfSel">Which vapor the sample is
+    <select id="cfSel"><option value="">Not specified (isobutylene equivalent)</option></select>
+  </label>
+  <p class="cfout" id="cfOut">Pick a vapor and the monitor responds to it the way a 10.6 eV lamp would. The monitor's own settings do not change.</p>
+</section>
+
+<section class="panel" aria-label="Shortcuts">
+  <h2>One-finger shortcuts</h2>
+  <button class="wide" id="progBtn" type="button">Hold MODE + N/&minus; for 3 seconds (Programming Mode)</button>
+  <button class="wide" id="pwrBtn" type="button">Hold MODE (power on / power off)</button>
+  <p class="hint">You can also hold the real keys: MODE alone for power, MODE and N/&minus; together for Programming Mode.</p>
+</section>
+
+<section class="panel" aria-label="Test conditions">
+  <h2>What the inlet is sampling</h2>
+  <div class="seg" id="srcSeg">
+    <button type="button" data-src="air" aria-pressed="true">Clean air</button>
+    <button type="button" data-src="zero" aria-pressed="false">Zero gas</button>
+    <button type="button" data-src="span" aria-pressed="false">Span gas, 100 ppm isobutylene</button>
+    <button type="button" data-src="sample" aria-pressed="false">Vapor sample</button>
+  </div>
+  <label class="field" for="concRange">Vapor sample concentration <output id="concOut">75 ppm isobutylene equivalent</output>
+    <input type="range" id="concRange" min="0" max="1000" step="1" value="167">
+  </label>
+  <label class="field inline" for="concNum">Type the vapor ppm
+    <input type="number" id="concNum" min="0" max="16000" step="any" inputmode="decimal" value="75">
+  </label>
+  <label class="field" for="multRange">Time multiplier for TWA, STEL and Avg <output id="multOut">1&times; (real time)</output>
+    <input type="range" id="multRange" min="0" max="1000" step="1" value="0">
+  </label>
+  <label class="field inline" for="multNum">Type the time multiplier
+    <input type="number" id="multNum" min="1" max="1000" step="1" inputmode="numeric" value="1">
+  </label>
+  <label class="check" for="blockChk"><input type="checkbox" id="blockChk"> Block the inlet (pump stall test)</label>
+</section>
+
+<details>
+  <summary>Key guide</summary>
+  <dl>
+    <dt>Power on</dt><dd>Hold MODE until the display starts.</dd>
+    <dt>Power off</dt><dd>From the reading screen hold MODE for 3 seconds, then keep holding through the 5-second countdown.</dd>
+    <dt>Icons</dt><dd>Battery at the top right. On the line under the reading: the pump (it turns while the pump runs and flashes a warning if stalled) and the datalog disk while logging. With Pump Duty Cycle below 100% and a reading under 2 ppm, the pump icon alternates with a pause mark. With Radio Power on (Monitor Setup, Radio Power), an antenna and five signal bars appear at the top right beside the battery.</dd>
+    <dt>Flashlight key</dt><dd>Press the round key to switch the flashlight on. Press again to switch it off.</dd>
+    <dt>Timeout</dt><dd>In Programming Mode, 60 seconds with no key press returns to the reading screen without saving the change in progress.</dd>
+    <dt>Search mode</dt><dd>Set under Monitor Setup, Op Mode. Sampling starts and stops on request, the second screen shows Avg and Peak in place of TWA and STEL, and an alarm beeps 1 to 7 times a second, faster at higher concentration.</dd>
+    <dt>User mode</dt><dd>Basic shows the reading, TWA/STEL/Peak, date and time, gas summary and PC Comm screens. Advanced adds "Change reference?" and "Change M. Gas?" and skips the password.</dd>
+    <dt>Alarms</dt><dd>HIGH, OVR and pump stall: 3 beeps a second. LOW: 2. STEL, TWA, CAL (calibration needed) and NEG (reading below the stored zero): 1. Clear only resets the Peak value.</dd>
+    <dt>N/&minus;</dt><dd>Steps to the next screen or menu item, moves to the next digit, answers No.</dd>
+    <dt>Reverse</dt><dd>Hold N/&minus; for 5 seconds on a screen with a scroll arrow. The arrow flips and N/&minus; then steps backward. Hold 5 seconds again to flip it back.</dd>
+    <dt>Y/+</dt><dd>Selects, raises a digit, answers Yes. On the reading screen it tests the alarm, clears a latched alarm, or restarts a stalled pump.</dd>
+    <dt>MODE</dt><dd>Backs out, finishes an edit, exits Programming Mode.</dd>
+    <dt>Programming</dt><dd>From the reading screen hold MODE and N/&minus; for 3 seconds. Password is 0000, so press MODE (Enter) to confirm. A wrong password opens Calibration only. Advanced user mode skips the password.</dd>
+    <dt>Range</dt><dd>Reads 0 to 999.9 ppm in 0.1 ppm steps and 1,000 to 15,000 ppm in 1 ppm steps. Above 15,000 ppm the reading holds at the top of the range and an OVR alarm sounds. The vapor sample slider goes to 16,000 ppm so you can trigger it.</dd>
+    <dt>Gas library</dt><dd>222 pre-programmed compounds in the monitor's alphabetical order. Gases with no 10.6 eV correction factor are listed but cannot be selected.</dd>
+    <dt>Vapor</dt><dd>Pick a vapor under "Vapor at the inlet" and the slider becomes that vapor's true ppm. The monitor shows what its lamp would report: the true ppm divided by the vapor's correction factor while set to Isobutylene, and the true ppm itself once Meas. Gas is set to the same vapor. Span gas is always 100 ppm isobutylene.</dd>
+    <dt>Time multiplier</dt><dd>Speeds up the exposure clock so TWA, STEL, Avg and the datalog count build faster. STEL shows dashes until 15 minutes of exposure time have passed. Readings, countdowns and key holds stay in real time.</dd>
+    <dt>Calibrate</dt><dd>Pick the gas under "What the inlet is sampling" first, then run Zero Calib or Span Calib. Bump checks the response against the span gas without changing the calibration. After you change a setting the soft keys switch to Save and Undo: Y/+ saves, N/&minus; discards. Span Calib first asks "Change?": Yes edits the span value, No moves on to applying gas. Countdowns run three times faster than the real 30 seconds.</dd>
+  </dl>
+  <p>Screens and menus follow the published user guide and a recorded walkthrough of the monitor. Small details can differ with firmware version. The monitor's gas library and the look-up drop-down both use RAE Systems Technical Note TN-186 (MiniRAE 3000 pre-programmed compounds), 10.6 eV column.</p>
+</details>
+
+<div class="veil" id="veil" role="alertdialog" aria-modal="true" aria-labelledby="critTitle">
+  <div class="crit">
+    <p class="tag">Critical error</p>
+    <h2 id="critTitle">This change would make the monitor unusable</h2>
+    <p class="what" id="critWhat"></p>
+    <p class="why" id="critWhy"></p>
+    <div class="btns">
+      <button type="button" id="undoBtn">Undo</button>
+      <button type="button" id="resetBtn">Reset</button>
+    </div>
+    <small>Undo reverses only this change. Reset returns to the reading screen with every setting at its default.</small>
+  </div>
+</div>
+
+<script>
+/*CORE-START*/
+(function(root){
+"use strict";
+/* On-monitor gas library: TN-186 (MiniRAE 3000 pre-programmed compounds), 10.6 eV column */
+var GASES=[
+  {n:"Acetaldehyde",cf:6,mw:44.1},{n:"Acetic Acid",cf:22,mw:60.1},{n:"Acetic Anhydride",cf:6.1,mw:102.1},
+  {n:"Acetone",cf:1.1,mw:58.1},{n:"Acetone cyanohydrin",cf:null,mw:85.1},{n:"Acetylene",cf:null,mw:26},
+  {n:"Acrolein",cf:3.9,mw:56.1},{n:"Acrylic Acid",cf:12,mw:72.06},{n:"Acrylonitrile",cf:null,mw:53.1},
+  {n:"Allyl alcohol",cf:2.4,mw:58.1},{n:"Ammonia",cf:9.7,mw:17},{n:"Amyl acetate",cf:2.3,mw:130.2},
+  {n:"Aniline",cf:0.48,mw:93.1},{n:"Anisole",cf:0.58,mw:108.1},{n:"Arsine",cf:1.9,mw:77.9},
+  {n:"Benzene",cf:0.53,mw:78.1},{n:"Benzyl alcohol",cf:1.1,mw:108.1},{n:"Benzyl chloride",cf:0.6,mw:126.6},
+  {n:"Benzyl formate",cf:0.73,mw:136.1},{n:"Bromine",cf:1.3,mw:159.8},{n:"Bromoethyl methyl ether, 2-",cf:0.84,mw:139},
+  {n:"Bromoform",cf:2.5,mw:252.7},{n:"Bromopropane,1-",cf:1.5,mw:123},{n:"Butadiene",cf:0.85,mw:54.1},
+  {n:"Butadiene diepoxide, 1,3-",cf:3.5,mw:86.1},{n:"Butane",cf:67,mw:58.1},{n:"Butanol, 1-",cf:4.7,mw:74.1},
+  {n:"Butanol, t-",cf:2.9,mw:74.1},{n:"Butoxyethanol, 2-",cf:1.2,mw:118.2},{n:"Butyl acetate, n-",cf:2.6,mw:116.2},
+  {n:"Butyl acrylate, n-",cf:1.6,mw:128.2},{n:"Butylamine, n-",cf:1.1,mw:73.1},{n:"Butyl hydroperoxide, t-",cf:1.6,mw:90.1},
+  {n:"Butyl mercaptan",cf:0.52,mw:90.2},{n:"Carbon disulfide",cf:1.2,mw:76.1},{n:"Carbon tetrachloride",cf:null,mw:153.8},
+  {n:"Chlorine",cf:null,mw:70.9},{n:"Chlorobenzene",cf:0.4,mw:112.6},{n:"Chloroethane",cf:null,mw:64.5},
+  {n:"Chloroethyl ether, 2-",cf:3,mw:143},{n:"Chloroform",cf:null,mw:119.4},{n:"Chloro-2-methylpropene, 3-",cf:1.2,mw:90.6},
+  {n:"Chloropicrin",cf:null,mw:164.4},{n:"Chlorotrifluoroethene",cf:3.9,mw:116.5},{n:"Chlorotrimethylsilane",cf:null,mw:108.6},
+  {n:"Cresol, m-",cf:0.5,mw:108.1},{n:"Crotonaldehyde",cf:1.1,mw:70.1},{n:"Cumene",cf:0.54,mw:120.2},
+  {n:"Cyclohexane",cf:1.4,mw:84.2},{n:"Cyclohexanol",cf:0.94,mw:100.1},{n:"Cyclohexanone",cf:0.9,mw:98.1},
+  {n:"Cyclohexene",cf:0.8,mw:82.1},{n:"Cyclopentane",cf:15,mw:70.1},{n:"Cyclopropylamine",cf:0.9,mw:57.1},
+  {n:"Decane",cf:1.4,mw:142.3},{n:"Dibromochloromethane",cf:5.3,mw:208.3},{n:"Dibromo-3-chloropropane, 1,2-",cf:1.7,mw:236.3},
+  {n:"Dibromoethane, 1,2-",cf:1.7,mw:187.9},{n:"Dichlorobenzene, o-",cf:0.47,mw:147},{n:"Dichlorodimethylsilane",cf:null,mw:129.1},
+  {n:"Dichloroethane, 1,2-",cf:null,mw:99},{n:"Dichloroethene, 1,1-",cf:0.82,mw:96.9},{n:"Dichloro-1-fluoroethane, 1,1-",cf:null,mw:117},
+  {n:"Dichloropentafluoropropane",cf:null,mw:202.9},{n:"Dichloro-1-propene, 1,3-",cf:0.96,mw:111},{n:"Dichloro-1-propene, 2,3-",cf:1.3,mw:111},
+  {n:"Dichloro-1,1,1-trifluoroethane, 2,2-",cf:null,mw:152.9},{n:"Dichloro-2,4,6-trifluoropyridine, 3,5-",cf:0.9,mw:202},{n:"Dichlorvos",cf:0.9,mw:221},
+  {n:"Dicyclopentadiene",cf:0.48,mw:132.2},{n:"Diesel Fuel #2, whole",cf:0.7,mw:216},{n:"Diethylamine",cf:0.97,mw:73.1},
+  {n:"Diglyme",cf:0.54,mw:134.2},{n:"Diisopropylamine",cf:0.74,mw:101.2},{n:"Diketene",cf:2,mw:84.1},
+  {n:"Dimethylacetamide, N,N-",cf:0.8,mw:87.1},{n:"Dimethyl carbonate",cf:null,mw:90.1},{n:"Dimethyl disulfide",cf:0.2,mw:94.1},
+  {n:"Dimethylethylamine",cf:1,mw:73.1},{n:"Dimethylformamide, N,N-",cf:0.7,mw:73.1},{n:"Dimethylhydrazine, 1,1-",cf:0.78,mw:60.1},
+  {n:"Dimethyl methylphosphonate",cf:4.3,mw:124.1},{n:"Dimethyl sulfate",cf:20,mw:126.1},{n:"Dimethyl sulfoxide",cf:1.4,mw:78.1},
+  {n:"Dioxolane, 1,3-",cf:2.3,mw:74.1},{n:"DS-108F Wipe Solvent",cf:1.6,mw:118},{n:"Epichlorohydrin",cf:8.5,mw:92.5},
+  {n:"Ethane",cf:null,mw:30.1},{n:"Ethanol",cf:10,mw:46.1},{n:"Ethanolamine",cf:1.6,mw:61.1},
+  {n:"Ethene",cf:9,mw:28.1},{n:"Ethyl acetate",cf:4.6,mw:88.1},{n:"Ethyl acrylate",cf:2.4,mw:100.1},
+  {n:"Ethylbenzene",cf:0.52,mw:106.2},{n:"Ethylenediamine",cf:0.8,mw:60.1},{n:"Ethylene glycol",cf:16,mw:62.1},
+  {n:"Ethylene glycol dimethyl ether",cf:0.86,mw:90.1},{n:"Ethylene oxide",cf:13,mw:44.1},{n:"Ethyl ether",cf:1.1,mw:74.1},
+  {n:"Ethyl 3-ethoxypropionate",cf:0.75,mw:146.2},{n:"Ethyl hexyl acrylate, 2-",cf:1.1,mw:184.3},{n:"Ethylidenenorbornene",cf:0.39,mw:120.2},
+  {n:"Ethyl (S)-(-)-lactate",cf:3.2,mw:118.1},{n:"Ethyl mercaptan",cf:0.56,mw:62.1},{n:"Ethyl sulfide",cf:0.51,mw:90.2},
+  {n:"Formaldehyde",cf:null,mw:30},{n:"Formamide",cf:6.9,mw:45},{n:"Formic acid",cf:null,mw:46},
+  {n:"Furfural",cf:0.92,mw:96.1},{n:"Furfuryl alcohol",cf:0.8,mw:98.1},{n:"Gasoline",cf:1,mw:93},
+  {n:"Glutaraldehyde",cf:0.8,mw:100.1},{n:"Heptane, n-",cf:2.8,mw:100.2},{n:"Hexamethyldisilazane, 1,1,1,3,3,3-",cf:0.24,mw:161.4},
+  {n:"Hexane, n-",cf:4.3,mw:86.2},{n:"Hexanol, 1-",cf:2.5,mw:102.2},{n:"Histoclear",cf:0.4,mw:136},
+  {n:"Hydrazine",cf:3,mw:32.1},{n:"Hydrogen iodide",cf:0.6,mw:127.9},{n:"Hydrogen sulfide",cf:3.3,mw:34.1},
+  {n:"Iodine",cf:0.1,mw:253.8},{n:"Iodomethane",cf:0.22,mw:141.9},{n:"Isoamyl acetate",cf:2.1,mw:130.2},
+  {n:"Isobutane",cf:null,mw:58.1},{n:"Isobutanol",cf:3.8,mw:74.1},{n:"Isobutylene",cf:1,mw:56.1},
+  {n:"Isobutyl acrylate",cf:1.5,mw:128.2},{n:"Isopar E Solvent",cf:0.8,mw:121},{n:"Isopar G Solvent",cf:0.79,mw:148},
+  {n:"Isopar K Solvent",cf:0.53,mw:156},{n:"Isopar L Solvent",cf:0.52,mw:163},{n:"Isopar M Solvent",cf:0.66,mw:191},
+  {n:"Isoprene",cf:0.63,mw:68.1},{n:"Isopropanol",cf:6,mw:60.1},{n:"Jet fuel JP-4",cf:1,mw:115},
+  {n:"Jet fuel JP-5",cf:0.6,mw:167},{n:"Jet fuel JP-8",cf:0.6,mw:165},{n:"Jet fuel TS",cf:0.6,mw:165},
+  {n:"Limonene, D-",cf:0.33,mw:136.2},{n:"Mesitylene",cf:0.35,mw:102.2},{n:"Methanol",cf:null,mw:32},
+  {n:"Methoxyethanol, 2-",cf:2.4,mw:76.1},{n:"Methoxyethoxyethanol, 2-",cf:1.2,mw:120.2},{n:"Methyl acetate",cf:6.6,mw:74.1},
+  {n:"Methyl acrylate",cf:3.7,mw:86.1},{n:"Methyl bromide",cf:1.7,mw:94.9},{n:"Methyl t-butyl ether",cf:0.91,mw:88.2},
+  {n:"Methyl chloride",cf:null,mw:50.5},{n:"Methylcyclohexane",cf:0.97,mw:98.2},{n:"Methylene chloride",cf:null,mw:84.9},
+  {n:"Methyl ether",cf:3.1,mw:46.1},{n:"Methyl ethyl ketone",cf:0.86,mw:72.1},{n:"Methylhydrazine",cf:1.2,mw:58.1},
+  {n:"Methyl isobutyl ketone",cf:0.8,mw:100.2},{n:"Methyl isocyanate",cf:4.6,mw:57.1},{n:"Methyl isothiocyanate",cf:0.45,mw:73.1},
+  {n:"Methyl mercaptan",cf:0.54,mw:48.1},{n:"Methyl methacrylate",cf:1.5,mw:100.12},{n:"Methyl propyl ketone",cf:0.93,mw:86.1},
+  {n:"Methyl-2-pyrrolidinone, N-",cf:0.8,mw:99.1},{n:"Methyl salicylate",cf:0.9,mw:152.1},{n:"Methyl sulfide",cf:0.44,mw:62.1},
+  {n:"Mineral spirits",cf:0.71,mw:144},{n:"Naphthalene",cf:0.42,mw:128.2},{n:"Nickel carbonyl in CO",cf:0.17,mw:170.8},
+  {n:"Nitric oxide",cf:5.2,mw:30},{n:"Nitrobenzene",cf:1.9,mw:123.1},{n:"Nitrogen dioxide",cf:16,mw:46},
+  {n:"Norpar 12",cf:1.1,mw:161},{n:"Norpar 13",cf:1,mw:189},{n:"Octane, n-",cf:1.8,mw:114.2},
+  {n:"Octene, 1-",cf:0.75,mw:112.2},{n:"Pentane",cf:8.4,mw:72.2},{n:"Peracetic acid",cf:null,mw:76.1},
+  {n:"Perchloroethene",cf:0.57,mw:168.5},{n:"PGME",cf:1.5,mw:90.1},{n:"PGMEA",cf:1,mw:132.2},
+  {n:"Phenol",cf:1,mw:94.1},{n:"Phosgene",cf:null,mw:98.9},{n:"Phosphine",cf:3.9,mw:34},
+  {n:"Pinene, α-",cf:1,mw:136.2},{n:"Pinene, β-",cf:0.37,mw:136.2},{n:"Piperylene, isomer mix",cf:0.69,mw:68.1},
+  {n:"Propane",cf:null,mw:44.1},{n:"Propene",cf:1.4,mw:42.1},{n:"Propylamine, n-",cf:1.1,mw:59.1},
+  {n:"Propyl mercaptan, 2-",cf:0.66,mw:76.2},{n:"Propylene carbonate",cf:null,mw:102.1},{n:"Propylene glycol",cf:5.5,mw:76.1},
+  {n:"Propylene oxide",cf:6.6,mw:58.1},{n:"Propyleneimine",cf:1.25,mw:57.1},{n:"Pyridine",cf:0.68,mw:79.1},
+  {n:"Pyrrolidine (coats lamp)",cf:1.3,mw:71.1},{n:"Styrene",cf:0.4,mw:104.1},{n:"Tetrachloroethane, 1,1,2,2-",cf:null,mw:167.9},
+  {n:"Tetrachlorosilane",cf:null,mw:169.9},{n:"Tetraethyl orthosilicate",cf:0.71,mw:208.3},{n:"Tetrahydrofuran",cf:1.7,mw:72.1},
+  {n:"Tetramethyl orthosilicate",cf:1.9,mw:152.2},{n:"Therminol VP-1",cf:0.4,mw:165.8},{n:"Toluene",cf:0.5,mw:92.1},
+  {n:"Tolylene-2,4-diisocyanate",cf:1.4,mw:174.2},{n:"Trichlorobenzene, 1,2,4-",cf:0.46,mw:181.5},{n:"Trichloroethane, 1,1,1-",cf:null,mw:133.4},
+  {n:"Trichloroethane, 1,1,2-",cf:null,mw:133.4},{n:"Trichloroethene",cf:0.54,mw:131.4},{n:"Trichloromethylsilane",cf:null,mw:149.5},
+  {n:"Triethylamine",cf:0.9,mw:101.2},{n:"Triethyl borate",cf:2.2,mw:146},{n:"Triethyl phosphate",cf:3.1,mw:140.1},
+  {n:"Trimethyl borate",cf:5.1,mw:103.9},{n:"Trimethyl phosphate",cf:8,mw:140.1},{n:"Trimethyl phosphite",cf:1.1,mw:124.1},
+  {n:"Turpentine",cf:0.3,mw:136.2},{n:"Vinyl acetate",cf:1.2,mw:86.1},{n:"Vinyl chloride",cf:2,mw:62.5},
+  {n:"Vinyl-1-cyclohexene, 4-",cf:0.56,mw:108.2},{n:"Vinyl-2-pyrrolidinone, 1-",cf:0.8,mw:111.1},{n:"Xylene, m-",cf:0.44,mw:106.2},
+  {n:"Xylene, o-",cf:0.46,mw:106.2},{n:"Xylene, p-",cf:0.39,mw:106.2},{n:"Custom VOC",cf:1,mw:56.1}
+];
+var DEFAULTS={measGas:'Isobutylene',measUnit:'ppm',spanValue:100,high:100,low:50,stel:25,twa:10,
+  alarmMode:'Auto Reset',buzzerLight:'Both on',interval:60,dataSel:{Average:true,Maximum:false,Minimum:false},
+  datalogType:'Auto',opMode:'Hygiene',siteID:'RAE00000',userID:'00000001',calGas:'Isobutylene',userMode:'Basic',dutyCycle:'100%',
+  pumpSpeed:'High',tempUnit:'Fahrenheit',language:'English',radioPower:'On',rtp:'P2P (cable)',powerOnZero:'Off',
+  unitID:1,lcdContrast:40,lampID:'Auto',panID:999,lastTen:['Isobutylene']};
+var CALREF_ITEM={name:'Cal Reference',type:'choice',key:'calGas',opts:['Isobutylene','Hexane, n-']};
+var SPAN_ITEM={name:'Span Value',type:'num',key:'spanValue',digits:5,dec:1};
+var MENUS=[
+ {name:'Calibration',items:[
+   {name:'Zero Calib',type:'act',act:'zero'},{name:'Span Calib',type:'act',act:'span'},{name:'Bump',type:'act',act:'bump'}]},
+ {name:'Measurement',items:[
+   {name:'Meas. Gas',type:'gasfrom'},
+   {name:'Meas. Unit',type:'choice',key:'measUnit',opts:['ppm','mg/m3']},
+   {name:'Tube Selection',type:'none',dis:true}]},
+ {name:'Alarm Setting',items:[
+   {name:'High Alarm',type:'num',key:'high',digits:5,dec:1},{name:'Low Alarm',type:'num',key:'low',digits:5,dec:1},
+   {name:'STEL Alarm',type:'num',key:'stel',digits:5,dec:1},{name:'TWA Alarm',type:'num',key:'twa',digits:5,dec:1},
+   {name:'Alarm Mode',type:'choice',key:'alarmMode',opts:['Auto Reset','Latch']},
+   {name:'Buzzer & Light',type:'choice',key:'buzzerLight',opts:['Both on','Light only','Buzzer only','Both off']}]},
+ {name:'Datalog',items:[
+   {name:'Clear Datalog',type:'act',act:'clearlog'},
+   {name:'Interval',type:'num',key:'interval',digits:4,dec:0,min:1,max:3600},
+   {name:'Data Selection',type:'multi',key:'dataSel'},
+   {name:'Datalog Type',type:'choice',key:'datalogType',opts:['Auto','Manual','Snapshot']}]},
+ {name:'Monitor Setup',items:[
+   {name:'Radio Power',type:'choice',key:'radioPower',opts:['Off','On']},
+   {name:'Op Mode',type:'choice',key:'opMode',opts:['Hygiene','Search']},
+   {name:'Site ID',type:'text',key:'siteID'},{name:'User ID',type:'text',key:'userID'},
+   {name:'User Mode',type:'choice',key:'userMode',opts:['Viewer','Basic','Advanced']},
+   {name:'Date',type:'mask',key:'date'},{name:'Time',type:'mask',key:'time'},
+   {name:'Pump Duty Cycle',type:'choice',key:'dutyCycle',opts:['50%','60%','70%','80%','90%','100%']},
+   {name:'Pump Speed',type:'choice',key:'pumpSpeed',opts:['Low','High']},
+   {name:'Temperature Unit',type:'choice',key:'tempUnit',opts:['Fahrenheit','Celsius']},
+   {name:'Language',type:'choice',key:'language',opts:['English','Espanol','Francais','Deutsch']},
+   {name:'Real Time Protocol',type:'choice',key:'rtp',opts:['P2P (cable)','P2M (cable)','P2M (wireless)']},
+   {name:'Power On Zero',type:'choice',key:'powerOnZero',opts:['Off','On']},
+   {name:'Unit ID',type:'num',key:'unitID',digits:3,dec:0},
+   {name:'LCD Contrast',type:'slider',key:'lcdContrast',min:20,max:60},
+   {name:'Lamp ID',type:'choice',key:'lampID',opts:['Auto','9.8 eV','10.6 eV','11.7 eV']},
+   {name:'PAN ID',type:'num',key:'panID',digits:3,dec:0,min:1,max:999}]}
+];
+var DIG='0123456789', ALNUM='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+var SPEED=3; // countdowns run 3x real time
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function p2(n){return (n<10?'0':'')+n;}
+
+function Sim(){
+  var s={power:'off',view:'off',t:0,env:{source:'air',sample:75,blocked:false,mult:1},
+         down:{Y:false,M:false,N:false},used:{},holdT:0,comboFired:false,critical:null,flash:null,toast:null,torch:false};
+  function hard(){
+    s.set=clone(DEFAULTS); s.cal={zero:0,sens:1,gas:'Isobutylene'}; s.clockOffset=0; s.logCount=0; s.logAcc=0; s.manualLog=false;
+    s.dir=1; s.backlight=true; s.resp=0; s.stalled=false; s.blockT=0; s.latched=null; s.sampling=false; s.testUntil=0; clearStats();
+  }
+  function clearStats(){s.peak=0;s.min=null;s.sum=0;s.sumT=0;s.hist=[];s.stelSum=0;s.stelDur=0;s.twaInt=0;}
+  hard();
+  function byName(n){for(var i=0;i<GASES.length;i++)if(GASES[i].n===n)return GASES[i];return null;}
+  function gas(){return byName(s.set.measGas)||byName('Isobutylene');}
+  function now(){return new Date(Date.now()+s.clockOffset);}
+  function fmtDate(){var d=now();return p2(d.getMonth()+1)+'/'+p2(d.getDate())+'/'+p2(d.getFullYear()%100);}
+  function fmtTime(){var d=now();return p2(d.getHours())+':'+p2(d.getMinutes())+':'+p2(d.getSeconds());}
+  function unit(){return s.set.measUnit;}
+  function toUnit(ppm){var u=s.set.measUnit;return u==='ppm'?ppm:u==='ppb'?ppm*1000:u==='mg/m3'?ppm*gas().mw/24.45:ppm*gas().mw/24.45*1000;}
+  var RANGE=15000;
+  function rawValue(){return Math.max(0,(s.resp-s.cal.zero)*s.cal.sens*gas().cf);}
+  function value(){return Math.min(RANGE,rawValue());}
+  function fmtV(v){return v>=999.95?String(Math.round(v)):v.toFixed(1);}
+  // Sensor response in isobutylene-equivalent ppm. With a vapor chosen, the slider is that vapor's true ppm.
+  function envConc(){
+    var e=s.env;if(e.source==='span')return 100;if(e.source!=='sample')return 0;
+    var g=e.gas?byName(e.gas):null;if(!g)return e.sample;
+    return g.cf===null?0:e.sample/g.cf;
+  }
+  function pumpWanted(){return s.power==='on'&&(s.set.opMode==='Hygiene'||s.sampling);}
+  function pumpOn(){return pumpWanted()&&!s.stalled;}
+  function stelVal(){return Math.max(0,s.stelSum||0)/Math.max(900,s.stelDur||0);}
+  function twaVal(){return s.twaInt/28800;}
+  function avgVal(){return s.sumT>0?s.sum/s.sumT:0;}
+  function liveAlarm(){
+    if(s.power!=='on'||s.view==='action'||s.view==='boot')return null;
+    if(s.stalled)return 'PUMP';
+    if(!pumpOn())return null;
+    var v=value(),a=s.set;
+    if(rawValue()>RANGE)return 'OVR';
+    if(v>a.high)return 'HIGH'; if(v>a.low)return 'LOW';
+    if(s.sumT>=900&&stelVal()>a.stel)return 'STEL'; if(twaVal()>a.twa)return 'TWA';
+    if((s.resp-s.cal.zero)*s.cal.sens*gas().cf<-0.5)return 'NEG';
+    if(calNeeded())return 'CAL';
+    return null;
+  }
+  function calNeeded(){return s.set.calGas!==s.cal.gas;}
+  var PRI={NEG:0.6,CAL:0.5,OVR:6,PUMP:5,HIGH:4,LOW:3,STEL:2,TWA:1};
+  function activeAlarm(){var l=liveAlarm();if(l)return l;return s.set.alarmMode==='Latch'&&s.power==='on'?s.latched:null;}
+  function signal(){
+    var a=activeAlarm(),bl=s.set.buzzerLight,rate=0;
+    if(a)rate=(a==='HIGH'||a==='PUMP'||a==='OVR')?3:a==='LOW'?2:1;
+    // Search mode: 1 to 7 beeps per second, faster at higher concentration
+    if((a==='HIGH'||a==='LOW')&&s.set.opMode==='Search')rate=Math.min(7,Math.max(1,Math.round(value()/s.set.low*2)));
+    else if(s.t<s.testUntil&&s.t>=(s.testFrom||0))rate=3;
+    return {rate:rate,buzzer:rate>0&&(bl==='Both on'||bl==='Buzzer only'),light:rate>0&&(bl==='Both on'||bl==='Light only')};
+  }
+  function logging(){return pumpOn()&&(s.set.datalogType==='Auto'||(s.set.datalogType==='Manual'&&s.manualLog));}
+
+  /* ---------- validation of changes ---------- */
+  function validate(){
+    var v=s.set;
+    if(v.language!=='English')return 'Every menu and prompt would now display in '+v.language+'. A crew that reads English could no longer operate or re-program the monitor.';
+    if(v.buzzerLight==='Both off')return 'The buzzer and the alarm lights are both disabled. The monitor would give no warning at all when gas reaches an alarm limit.';
+    if(v.high<=0||v.low<=0||v.stel<=0||v.twa<=0)return 'An alarm limit is set to 0. The monitor would sit in constant alarm, so a real exposure could not be told apart from the setting.';
+    if(v.high<=v.low)return 'The High Alarm ('+v.high+') is no longer above the Low Alarm ('+v.low+'). The two warning levels are reversed, so the alarms would not mean what the crew expects.';
+    if(v.spanValue<=0)return 'The Span Value is 0. The monitor cannot be span calibrated against a zero concentration, so it cannot be put in service.';
+    if(v.lcdContrast<=20)return 'LCD Contrast is at its minimum. The display would be too faint to read.';
+    if(v.lcdContrast>=60)return 'LCD Contrast is at its maximum. The display would turn solid dark and unreadable.';
+    if(v.lampID!=='Auto'&&v.lampID!=='10.6 eV')return 'Lamp ID is forced to '+v.lampID+' but a 10.6 eV lamp is installed. Correction factors and calibration would be applied for the wrong lamp, so every reading would be wrong.';
+    if(s.cal.bad)return s.cal.bad;
+    return null;
+  }
+  function applyChange(label,from,to,mutate){
+    var snap={set:clone(s.set),cal:clone(s.cal),clockOffset:s.clockOffset};
+    mutate();
+    var why=validate();
+    if(why){s.critical={label:label,from:from,to:to,why:why,snap:snap};s.flash=null;return false;}
+    return true;
+  }
+  function undo(){
+    if(!s.critical)return;var sn=s.critical.snap;
+    s.set=sn.set;s.cal=sn.cal;s.clockOffset=sn.clockOffset;s.critical=null;s.edit=null;s.act=null;
+    s.ret=null;if(s.inProg)s.view='menu';else goMain();
+  }
+  function reset(){hard();s.critical=null;s.flash=null;s.edit=null;s.act=null;s.inProg=false;s.power='on';goMain();}
+
+  /* ---------- flow helpers ---------- */
+  function goMain(){s.view='main';s.scr=0;s.sub=null;s.idle=0;s.inProg=false;s.ret=null;}
+  function toMenu(){if(s.ret==='main')goMain();else s.view='menu';}
+  var GASFROM=['My List','Last Ten','Gas Library','Custom Gases'];
+  function openGasFrom(ret){s.ret=ret;s.gf=0;s.view='gasfrom';}
+  function gasFromKey(k){
+    if(k==='N'){s.gf=step(s.gf,4);return;}
+    if(k==='M'){toMenu();return;}
+    var nm=GASFROM[s.gf],opts=s.gf===0?['Isobutylene']:s.gf===1?s.set.lastTen.slice():s.gf===2?GASES.map(function(g){return g.n;}):[];
+    if(!opts.length){flashMsg(['No custom','gases stored'],1.4);return;}
+    var e={it:{name:nm,type:'choice',key:'measGas',opts:opts,plain:true,label:'Meas. Gas'},kind:'choice',val:s.set.measGas,cur:Math.max(0,opts.indexOf(s.set.measGas))};
+    e.orig=JSON.stringify(e.val);s.edit=e;s.view='edit';
+  }
+  function flashMsg(lines,secs,next){s.flash={lines:lines,until:s.t+secs,next:next||null};}
+  function startBoot(){
+    s.power='boot';s.view='boot';s.bootT=0;s.sampling=false;s.stalled=false;s.latched=null;clearStats();
+    s.testFrom=s.t+1.6;s.testUntil=s.t+2.3;
+    s.bootFrames=[
+      {d:1.6,rows:[{t:'PID',big:1,c:1},{t:'TRAINER',big:1,c:1}]},
+      {d:2.8,rows:[{t:'PGM-7320',c:1},{t:'V2.14',c:1}]},
+      {d:1.6,cnt:4.4,rows:[{t:'Self test...',c:1}]},
+      {d:1.1,rows:[{t:'Test passed!',c:1}]}
+    ];
+  }
+  function powerOff(){s.power='off';s.view='off';s.inProg=false;s.flash=null;}
+  function enterProg(){
+    if(s.power!=='on'||s.view!=='main')return;
+    s.inProg=true;
+    if(s.set.userMode==='Advanced'){openMenus(false);}
+    else{s.view='password';s.pw=[0,0,0,0];s.pwCur=0;}
+  }
+  function openMenus(restricted){s.view='menu';s.nav={top:true,mi:0,ii:0,restricted:restricted};}
+  function menus(){return s.nav.restricted?[MENUS[0]]:MENUS;}
+
+  /* ---------- editing ---------- */
+  function getStr(it){
+    if(it.key==='date')return fmtDate(); if(it.key==='time')return fmtTime();
+    if(it.type==='num')return String(Math.round(s.set[it.key]*Math.pow(10,it.dec))).padStart(it.digits,'0');
+    return String(s.set[it.key]);
+  }
+  function showVal(it){
+    if(it.type==='act')return '';
+    if(it.type==='multi'){var k=[];for(var n in s.set.dataSel)if(s.set.dataSel[n])k.push(n.slice(0,3));return k.join('+');}
+    if(it.key==='date')return fmtDate(); if(it.key==='time')return fmtTime().slice(0,5);
+    return String(s.set[it.key]);
+  }
+  function openItem(it){
+    if(it.dis){flashMsg(['Not available','on this model'],1.4);return;}
+    if(it.type==='act'){startAct(it.act,false);return;}
+    if(it.type==='gasfrom'){openGasFrom('menu');return;}
+    var e={it:it,kind:it.type,cur:0};
+    if(it.type==='choice'){e.val=s.set[it.key];e.cur=Math.max(0,it.opts.indexOf(e.val));}
+    else if(it.type==='multi'){e.val=clone(s.set.dataSel);e.opts=Object.keys(e.val);}
+    else if(it.type==='slider'){e.val=s.set[it.key];}
+    else{e.kind='str';e.chars=getStr(it).split('');}
+    e.orig=JSON.stringify(e.kind==='str'?e.chars.join(''):e.val);
+    s.edit=e;s.view='edit';
+  }
+  function charset(e,i){
+    if(e.it.type==='text')return (e.it.key==='siteID'&&i>=4)?DIG:ALNUM;
+    return DIG;
+  }
+  function editable(e,i){return /[0-9A-Z]/.test(e.chars[i]);}
+  function editKey(k){
+    var e=s.edit,it=e.it;
+    if(k==='M'){
+      var cur=JSON.stringify(e.kind==='str'?e.chars.join(''):e.val);
+      if(it.plain){s.edit=null;s.view='gasfrom';return;}
+      if(cur!==e.orig)s.view='confirm'; else{s.edit=null;toMenu();}
+      return;
+    }
+    if(e.kind==='choice'){
+      if(k==='N')e.cur=step(e.cur,it.opts.length);
+      else{
+        if(it.plain&&byName(it.opts[e.cur]).cf===null){flashMsg(['No CF for','10.6 eV lamp'],1.6);return;}
+        e.val=it.opts[e.cur];if(it.plain){if(JSON.stringify(e.val)!==e.orig)s.view='confirm';else{s.edit=null;toMenu();}}}
+    }
+    else if(e.kind==='multi'){
+      if(k==='N')e.cur=step(e.cur,e.opts.length);
+      else{var n=e.opts[e.cur],on=0;for(var q in e.val)if(e.val[q])on++;
+        if(e.val[n]&&on===1)flashMsg(['Select at','least one'],1.2);else e.val[n]=!e.val[n];}
+    }
+    else if(e.kind==='slider'){e.val=Math.max(it.min,Math.min(it.max,e.val+(k==='Y'?1:-1)));}
+    else{
+      if(k==='Y'){var cs=charset(e,e.cur),ix=cs.indexOf(e.chars[e.cur]);e.chars[e.cur]=cs[(ix+1)%cs.length];}
+      else{do{e.cur=(e.cur+1)%e.chars.length;}while(!editable(e,e.cur));}
+    }
+  }
+  function saveEdit(){
+    var e=s.edit,it=e.it,from=it.key==='measGas'?s.set.measGas:showVal(it),to,mut;
+    if(e.kind==='str'){
+      var str=e.chars.join('');
+      if(it.type==='num'){
+        var val=parseInt(str,10)/Math.pow(10,it.dec);
+        if((it.min!=null&&val<it.min)||(it.max!=null&&val>it.max)){
+          flashMsg(['Out of range',it.min+' to '+it.max],1.6,function(){s.view='edit';});return;}
+        to=String(val);mut=function(){s.set[it.key]=val;};
+      }else if(it.key==='date'||it.key==='time'){
+        var p=str.split(/[\/:]/).map(Number),d=now(),nd;
+        if(it.key==='date'){
+          nd=new Date(2000+p[2],p[0]-1,p[1],d.getHours(),d.getMinutes(),d.getSeconds());
+          if(p[0]<1||p[0]>12||p[1]<1||nd.getMonth()!==p[0]-1){flashMsg(['Invalid date','Not saved'],1.6,function(){s.view='edit';});return;}
+        }else{
+          if(p[0]>23||p[1]>59||p[2]>59){flashMsg(['Invalid time','Not saved'],1.6,function(){s.view='edit';});return;}
+          nd=new Date(d.getFullYear(),d.getMonth(),d.getDate(),p[0],p[1],p[2]);
+        }
+        to=str;mut=function(){s.clockOffset=nd.getTime()-Date.now();};
+      }else{to=str;mut=function(){s.set[it.key]=str;};}
+    }else if(e.kind==='multi'){
+      var v=clone(e.val);mut=function(){s.set.dataSel=v;};
+      var k=[];for(var n in v)if(v[n])k.push(n.slice(0,3));to=k.join('+');
+    }else{var nv=e.val;to=String(nv);mut=function(){s.set[it.key]=nv;
+      if(it.key==='measGas'){var lt=s.set.lastTen.filter(function(g){return g!==nv;});lt.unshift(nv);s.set.lastTen=lt.slice(0,10);}};}
+    var ok=applyChange(it.label||it.name,from,to,mut);
+    s.edit=null;if(it.plain&&s.ret!=='main')s.view='gasfrom';else toMenu();
+    if(ok){
+      if(it.key==='opMode')s.sampling=false;
+    }
+  }
+
+  /* ---------- calibration and other actions ---------- */
+  function startAct(type,boot){s.act={type:type,stage:type==='span'?'ask':'prompt',boot:boot,left:0};s.view='action';}
+  function calNext(type){
+    if(s.nav&&!s.nav.top){var nm=menus()[s.nav.mi].name;
+      if(nm==='Calibration'&&type==='zero')s.nav.ii=1; else if(nm==='Calibration'&&type==='span')s.nav.ii=0;
+      else if(nm==='Datalog'&&type==='clearlog')s.nav.ii=1;}
+  }
+  function actExit(){var a=s.act,b=a&&a.boot;s.act=null;if(b)goMain();else{s.view='menu';if(a)calNext(a.type);}}
+  function actKey(k){
+    var a=s.act;
+    if(a.type==='clearlog'){
+      if(k==='Y'){s.logCount=0;s.logAcc=0;actExit();flashMsg(['Datalog Cleared!'],1.2);}
+      else actExit();
+      return;
+    }
+    if(a.stage==='ask'){
+      if(k==='Y'){s.act=null;openItem(SPAN_ITEM);}
+      else if(k==='N')a.stage='prompt';
+      else actExit();
+    }else if(a.stage==='prompt'){
+      if(k==='Y'){a.stage='run';a.left=a.type==='bump'?20:30;}
+      else actExit();
+    }else if(a.stage==='run'){
+      if(k==='N'){var t=a.type;actExit();flashMsg([t==='zero'?'Zero aborted!':t==='span'?'Span is aborted!':'Aborted'],1.2);}
+    }else actExit();
+  }
+  function finishAct(){
+    var a=s.act,r=s.resp;
+    if(a.type==='zero'){
+      applyChange('Zero Calib','previous zero','new zero taken with about '+r.toFixed(0)+' ppm at the inlet',function(){
+        s.cal.zero=r; s.cal.bad=r>3?'Zero calibration ran while gas was at the inlet. The monitor now treats that gas as zero, so it would read low or show nothing when vapors are present. Zero only in clean air or with zero gas.':undefined;
+      });
+      a.msg=['Zeroing is done!','Reading = 0.0 '+unit()];
+    }else if(a.type==='span'){
+      var net=r-s.cal.zero,sp=s.set.spanValue,bad;
+      if(net<0.1*sp)bad='Span calibration ran with no span gas at the inlet. The sensor response was near zero, so the calibration is invalid and readings cannot be trusted.';
+      else if(s.set.calGas!=='Isobutylene')bad='Cal Reference is set to '+s.set.calGas+', but the span gas at the inlet is 100 ppm isobutylene. The monitor is now calibrated against the wrong gas and every reading would be off.';
+      else if(Math.abs(net-sp)/sp>0.2)bad='The gas at the inlet (100 ppm isobutylene) does not match the Span Value ('+sp+' ppm). The monitor is now scaled to the wrong concentration and every reading would be off.';
+      applyChange('Span Calib','previous span','new span against Span Value '+sp+' ppm',function(){
+        if(net>0.5)s.cal.sens=sp/net; s.cal.bad=bad; if(!bad)s.cal.gas=s.set.calGas;
+      });
+      a.msg=['Span 1 is done!','Reading = '+fmtV(Math.max(0,net*s.cal.sens))+' ppm'];
+    }else{
+      var rd=(r-s.cal.zero)*s.cal.sens,sv=s.set.spanValue,pass=rd>=0.5*sv&&rd<=1.5*sv;
+      a.msg=[pass?'Bump test passed!':'Bump test failed!','Reading = '+fmtV(Math.max(0,rd))+' ppm'];
+    }
+    a.stage='done';a.left=4;
+  }
+
+  /* ---------- operating screens ---------- */
+  function screens(){
+    var L=['reading','twa','datetime'];
+    if(s.set.datalogType==='Manual')L.push('dlog');
+    if(s.set.userMode==='Advanced')L.push('calref','mgas');
+    L.push('gasinfo','pc');
+    return L;
+  }
+  function mainKey(k){
+    var L=screens();if(s.scr>=L.length)s.scr=0;var cur=L[s.scr],search=s.set.opMode==='Search';
+    if(s.sub==='stopq'){
+      if(k==='Y'){s.sampling=false;s.sub=null;flashMsg(['Sampling stopped!'],1.4);}
+      else if(k==='N'){s.sub=null;s.scr=step(s.scr,L.length);}
+      else s.sub=null;
+      return;
+    }
+    if(s.sub==='clearq'){if(k==='Y'){s.peak=0;flashMsg(['Peak cleared!'],1.4);}s.sub=null;return;}
+    if(k==='N'){
+      if(cur==='reading'&&search&&s.sampling){s.sub='stopq';return;}
+      s.scr=step(s.scr,L.length);return;
+    }
+    if(k==='Y'){
+      if(cur==='reading'){
+        if(s.stalled){if(!s.env.blocked){s.stalled=false;s.blockT=0;s.latched=null;}}
+        else if(s.latched&&!liveAlarm())s.latched=null;
+        else if(search&&!s.sampling){s.sampling=true;clearStats();flashMsg(['User ID: '+s.set.userID,'Site ID: '+s.set.siteID,'CF = '+gas().cf.toFixed(2)],2);}
+        else{s.testFrom=s.t;s.testUntil=s.t+1.5;}
+      }
+      else if(cur==='dlog'){s.manualLog=!s.manualLog;flashMsg([s.manualLog?'Datalog Started':'Datalog Stopped'],1.4);}
+      else if(cur==='twa')s.sub='clearq';
+      else if(cur==='calref'){openItem(CALREF_ITEM);s.ret='main';}
+      else if(cur==='mgas')openGasFrom('main');
+      else if(cur==='pc')s.view='pccomm';
+      return;
+    }
+    if(k==='M'&&cur==='reading'&&s.set.datalogType==='Snapshot'&&pumpOn()){s.logCount++;s.toast={t:'Snapshot saved',until:s.t+1.5};}
+  }
+
+  /* ---------- key input ---------- */
+  function short(k){
+    if(s.critical||s.power!=='on')return;
+    s.idle=0;
+    if(s.flash)return;
+    switch(s.view){
+      case 'main':mainKey(k);break;
+      case 'pccomm':if(k==='Y')goMain();break;
+      case 'gasfrom':gasFromKey(k);break;
+      case 'password':
+        if(k==='Y')s.pw[s.pwCur]=(s.pw[s.pwCur]+1)%10;
+        else if(k==='N')s.pwCur=(s.pwCur+1)%4;
+        else{if(s.pw.join('')==='0000')openMenus(false);else{openMenus(true);flashMsg(['Wrong password','Calibration only'],1.6);}}
+        break;
+      case 'menu':
+        var n=s.nav,M=menus();
+        if(n.top){
+          if(k==='N')n.mi=step(n.mi,M.length);
+          else if(k==='Y'){n.top=false;n.ii=0;}
+          else{s.view='updating';s.updT=1.2;}
+        }else{
+          var items=M[n.mi].items;
+          if(k==='N')n.ii=step(n.ii,items.length);
+          else if(k==='Y')openItem(items[n.ii]);
+          else n.top=true;
+        }
+        break;
+      case 'edit':editKey(k);break;
+      case 'confirm':
+        if(k==='Y')saveEdit();else if(k==='N'){s.edit=null;toMenu();}else s.view='edit';
+        break;
+      case 'action':actKey(k);break;
+    }
+  }
+  function keyDown(k){
+    if(s.critical||s.down[k])return;
+    s.idle=0;
+    s.down[k]=true;s.used[k]=false;s.holdT=0;s.comboFired=false;
+    var c=0,q;for(q in s.down)if(s.down[q])c++;
+    if(c>1)for(q in s.down)if(s.down[q])s.used[q]=true;
+  }
+  function keyUp(k){
+    if(!s.down[k])return;
+    s.down[k]=false;s.holdT=0;
+    if(s.view==='shutdown'){if(k==='M')goMain();return;}
+    if(!s.used[k])short(k);
+  }
+  function navView(){return (s.view==='main'&&!s.sub)||s.view==='menu'||s.view==='gasfrom'||(s.view==='edit'&&s.edit&&(s.edit.kind==='choice'||s.edit.kind==='multi'));}
+  function step(i,n){return (i+s.dir+n)%n;}
+  function holds(dt){
+    var d=s.down;
+    if(d.N&&!d.M&&!d.Y&&s.power==='on'&&!s.flash&&navView()){
+      s.holdT+=dt;
+      if(s.holdT>=5&&!s.used.N){s.used.N=true;s.dir=-s.dir;}
+      return;
+    }
+    if(d.M&&d.N&&!d.Y){
+      s.holdT+=dt;
+      if(s.holdT>=3&&!s.comboFired){s.comboFired=true;enterProg();}
+    }else if(d.M&&!d.N&&!d.Y){
+      s.holdT+=dt;
+      if(s.view==='shutdown'){s.shut-=dt;if(s.shut<=0){s.view='unitoff';s.offT=1.5;}}
+      else if(s.power==='off'&&s.holdT>=1&&!s.used.M){s.used.M=true;startBoot();}
+      else if(s.power==='on'&&s.view==='main'&&s.holdT>=3&&!s.used.M&&!s.flash){s.used.M=true;s.view='shutdown';s.shut=5;}
+    }
+  }
+
+  /* ---------- time ---------- */
+  function tick(dt){
+    s.t+=dt;
+    if(s.critical)return;
+    holds(dt);
+    if(s.power==='off')return;
+    if(s.flash&&s.t>=s.flash.until){var nx=s.flash.next;s.flash=null;if(nx)nx();}
+    if(s.power==='boot'){
+      s.bootT+=dt;var acc=0,done=true;
+      for(var i=0;i<s.bootFrames.length;i++){acc+=s.bootFrames[i].d;if(s.bootT<acc){s.bootIdx=i;done=false;break;}}
+      if(done){s.power='on';if(s.set.powerOnZero==='On')startAct('zero',true);else goMain();}
+      return;
+    }
+    // pump and sensor
+    if(s.env.blocked&&pumpWanted()&&!s.stalled){s.blockT+=dt;if(s.blockT>2)s.stalled=true;}else if(!s.env.blocked)s.blockT=0;
+    var target=pumpOn()?envConc():0;
+    s.resp+=(target-s.resp)*(1-Math.exp(-dt/1.25)); // T90 just under 3 s
+    if(Math.abs(target-s.resp)<0.02)s.resp=target;
+    if(pumpOn()&&s.view!=='action'){
+      var v=value();
+      if(v>s.peak)s.peak=v; if(s.min===null||v<s.min)s.min=v;
+      // exposure clock: the time multiplier speeds up TWA, STEL and Avg only
+      var xd=dt*(s.env.mult||1);s.xt=(s.xt||0)+xd;
+      s.sum+=v*xd;s.sumT+=xd;s.twaInt+=v*xd;
+      s.hist.push([s.xt,v,xd]);s.stelSum=(s.stelSum||0)+v*xd;s.stelDur=(s.stelDur||0)+xd;
+      while(s.hist.length&&s.xt-s.hist[0][0]>900){var old=s.hist.shift();s.stelSum-=old[1]*old[2];s.stelDur-=old[2];}
+    }
+    var la=liveAlarm();
+    if(la&&PRI[la]>=1&&(!s.latched||PRI[la]>PRI[s.latched]))s.latched=la;
+    if(s.set.alarmMode!=='Latch'&&!la)s.latched=null;
+    if(logging()){s.logAcc+=dt*(s.env.mult||1);while(s.logAcc>=s.set.interval){s.logAcc-=s.set.interval;s.logCount++;}}
+    if(s.view==='unitoff'){s.offT-=dt;if(s.offT<=0)powerOff();return;}
+    if(s.view==='updating'){s.updT-=dt;if(s.updT<=0)goMain();}
+    s.idle=(s.idle||0)+dt;
+    if(s.view==='main'){if(s.scr!==0&&s.idle>60){s.scr=0;s.sub=null;}}
+    else if(s.idle>60&&(s.view==='menu'||s.view==='edit'||s.view==='confirm'||s.view==='gasfrom'||s.view==='password'||(s.view==='action'&&s.act&&(s.act.stage==='ask'||s.act.stage==='prompt')))){
+      s.edit=null;s.act=null;goMain(); // 60 s with no key press: drop out without saving
+    }
+    if(s.view==='action'&&s.act){
+      var a=s.act;
+      if(a.stage==='run'){a.left-=dt*SPEED;if(a.left<=0)finishAct();}
+      else if(a.stage==='done'){a.left-=dt;if(a.left<=0)actExit();}
+    }
+    if(s.toast&&s.t>s.toast.until)s.toast=null;
+  }
+
+  /* ---------- what the display shows ---------- */
+  function contrast(){return s.view==='edit'&&s.edit&&s.edit.kind==='slider'?s.edit.val:s.set.lcdContrast;}
+  function windowed(list,idx,n){var st=Math.max(0,Math.min(idx-1,list.length-n));return {st:st,part:list.slice(st,st+n)};}
+  var UP='@up',DN='@down',RT='@right',PW='@pwr',BL='@bell';
+  function screen(){
+    var o=build();o.contrast=contrast();o.bl=s.backlight?1:0;
+    if(s.dir<0&&o.soft&&navView()&&!s.flash){o.soft=o.soft.slice();if(o.soft[2]==='@down')o.soft[2]='@up';else if(o.soft[2]==='@right')o.soft[2]='@left';}
+    return o;
+  }
+  function build(){
+    if(s.power==='off')return {kind:'off'};
+    if(s.view==='confirm'&&!s.flash){s.view='edit';var oc=build();s.view='confirm';oc.soft=['Save','','Undo'];return oc;}
+    if(s.flash)return {kind:'text',rows:s.flash.lines.map(function(t){return {t:t,c:1};}),soft:['','','']};
+    var u=unit();
+    switch(s.view){
+    case 'boot':var bf=s.bootFrames[s.bootIdx||0];
+      return {kind:'text',rows:bf.rows,corner:bf.cnt?String(Math.max(0,Math.floor((s.bootT-bf.cnt)*2900))):'',soft:null};
+    case 'shutdown':return {kind:'text',rows:[{t:'Shutting Down..',c:1},{t:String(Math.max(0,Math.ceil(s.shut))),box:1,c:1}],soft:['','','']};
+    case 'unitoff':return {kind:'text',rows:[{t:'Unit off...',c:1}],soft:['','','']};
+    case 'updating':return {kind:'text',rows:[{t:'Updating',c:1},{t:'settings...',c:1}],soft:['','','']};
+    case 'pccomm':return {kind:'text',rows:[{t:'PC comm. ready..',c:1}],soft:['Exit',PW,'']};
+    case 'gasfrom':var wg=windowed(GASFROM,s.gf,2);
+      return {kind:'text',title:'Select Gas From',rows:wg.part.map(function(t,i){return {t:t,hl:wg.st+i===s.gf,ind:1};}),soft:['Select','Back',DN]};
+    case 'password':return {kind:'text',title:'Password',rows:[{t:s.pw.join(' '),cur:s.pwCur*2,box:1,c:1}],soft:[UP,'Enter',RT]};
+    case 'menu':
+      var n=s.nav,M=menus();
+      if(n.top)return {kind:'icons',title:M[n.mi].name,sel:n.mi,icons:n.restricted?['CAL']:['CAL','999\nppm','ALM','LOG','SET'],soft:['Select','Back',RT]};
+      var items=M[n.mi].items,w=windowed(items,n.ii,2);
+      return {kind:'text',title:M[n.mi].name,rows:w.part.map(function(it,i){return {t:it.name,hl:w.st+i===n.ii,ind:1,dis:it.dis?1:0};}),soft:['Select','Back',DN]};
+    case 'edit':
+      var e=s.edit,it=e.it;
+      if(e.kind==='choice'){var w2=windowed(it.opts,e.cur,2);
+        if(it.plain)return {kind:'text',title:it.name,rows:w2.part.map(function(op,i){return {t:op,hl:w2.st+i===e.cur,ind:1};}),soft:['Select','Back',DN]};
+        return {kind:'text',title:it.name,rows:w2.part.map(function(op,i){return {t:op,radio:op===e.val?2:1,hl:w2.st+i===e.cur};}),soft:['Select','Done',DN]};}
+      if(e.kind==='multi'){var w3=windowed(e.opts,e.cur,2);
+        return {kind:'text',title:it.name,rows:w3.part.map(function(op,i){return {t:op,check:e.val[op]?2:1,hl:w3.st+i===e.cur};}),soft:['Toggle','Done',DN]};}
+      if(e.kind==='slider')return {kind:'text',title:it.name,rows:[{t:String(e.val),box:1,c:1},{t:it.min+' to '+it.max,c:1}],soft:['+','Done','-']};
+      var str=e.chars.join(''),cur=e.cur;
+      if(it.type==='num'&&it.dec>0){var dp=it.digits-it.dec;str=str.slice(0,dp)+'.'+str.slice(dp);if(cur>=dp)cur++;}
+      var extra=it.type==='num'&&it.dec>0?u:it.key==='date'?'MM/DD/YY':it.key==='time'?'HH:MM:SS':it.key==='interval'?'seconds':'';
+      return {kind:'text',title:it.name,rows:[{t:str,cur:cur,box:1,c:1},{t:extra,c:1}],soft:[UP,'Done',RT]};
+    case 'confirm':return {kind:'text',title:s.edit.it.name,rows:[{t:'Save change?',c:1}],soft:['Save','Back','Undo']};
+    case 'action':
+      var a=s.act;
+      if(a.type==='clearlog')return {kind:'text',title:'Clear Datalog',rows:[{t:'Clear Datalog',c:1},{t:'Are you sure?',c:1}],soft:['Yes','','No']};
+      var hd=[{t:'C. Gas = '+s.set.calGas},{t:'Span = '+s.set.spanValue+' ppm'}];
+      if(a.stage==='ask')return {kind:'text',rows:hd.concat([{t:'Change?'}]),soft:['Yes','Quit','No']};
+      if(a.stage==='prompt')return a.type==='zero'?{kind:'text',rows:[{t:'Apply zero gas...',c:1}],soft:['Start','Quit','']}
+        :{kind:'text',rows:hd.concat([{t:'Please apply gas 1...'}]),soft:['Start','Quit','']};
+      var cnt=String(Math.max(0,Math.ceil(a.left)));
+      if(a.stage==='run')return a.type==='zero'?{kind:'text',rows:[{t:'Zeroing...',c:1},{t:cnt,box:1,c:1}],soft:['','','Abort']}
+        :{kind:'text',rows:hd.concat([{t:a.type==='bump'?'Bump testing...':'Calibrating...',r:cnt}]),soft:['','','Abort']};
+      return {kind:'text',rows:a.msg.map(function(t){return {t:t,c:1};}),soft:['','','']};
+    }
+    // main
+    var L=screens();if(s.scr>=L.length)s.scr=0;var cur2=L[s.scr],search=s.set.opMode==='Search';
+    if(s.sub==='stopq')return {kind:'text',rows:[{t:'Stop sampling?',c:1}],soft:['Yes','','No']};
+    if(s.sub==='clearq')return {kind:'text',rows:[{t:'Clear peak value!',c:1},{t:'Are you sure?',c:1}],soft:['Yes','','No']};
+    var f=function(x){return fmtV(toUnit(x))+' '+u;},d0=now();
+    switch(cur2){
+    case 'reading':
+      var al=activeAlarm(),ready=search&&!s.sampling;
+      return {kind:'reading',gas:'CF = '+gas().cf.toFixed(2)+' '+s.set.measGas.slice(0,8),val:ready?'':fmtV(toUnit(value())),unit:u,calOk:!calNeeded(),alarm:al,ready:ready,
+        pump:s.stalled?'stall':!pumpOn()?'off':(s.set.dutyCycle!=='100%'&&value()<2)?'duty':'on',log:logging(),rf:s.set.radioPower==='On',
+        toast:s.toast?s.toast.t:(s.t<s.testUntil&&s.t>=(s.testFrom||0)?'ALARM TEST':''),
+        soft:[s.stalled?'Restart':(al&&!liveAlarm())?'Clear':ready?'Start':BL,PW,RT]};
+    case 'dlog':return {kind:'text',rows:[{t:s.manualLog?'Stop datalog?':'Start datalog?',c:1},{t:'Interval: '+s.set.interval+' seconds',c:1}],soft:['Yes',PW,RT]};
+    case 'twa':if(search)return {kind:'text',rows:[{t:'Avg:',r:f(avgVal())},{t:'Peak:',r:f(s.peak)}],soft:['Clear',PW,RT]};
+      return {kind:'text',rows:[{t:'TWA:',r:f(twaVal())},{t:'STEL:',r:s.sumT>=900?f(stelVal()):'----- '+u},{t:'Peak:',r:f(s.peak)}],soft:['Clear',PW,RT]};
+    case 'datetime':return {kind:'text',rows:[{t:'Date: '+p2(d0.getMonth()+1)+'/'+p2(d0.getDate())+'/'+d0.getFullYear()},{t:'Time: '+fmtTime()},{t:'Temp: '+(s.set.tempUnit==='Fahrenheit'?'72\u00b0F':'22\u00b0C')}],soft:['',PW,RT]};
+    case 'calref':return {kind:'text',rows:[{t:'Cal ref 0'},{t:'C. Gas = '+s.set.calGas},{t:'Change reference?'}],soft:['Yes',PW,RT]};
+    case 'mgas':return {kind:'text',rows:[{t:'M. Gas = '+s.set.measGas},{t:'CF = '+gas().cf.toFixed(2)},{t:'Change M. Gas?'}],soft:['Yes',PW,RT]};
+    case 'gasinfo':return {kind:'text',rows:[{t:'C. Gas = '+s.set.calGas},{t:'M. Gas = '+s.set.measGas},{t:'CF = '+gas().cf.toFixed(2),r:'10.6eV'}],soft:['',PW,RT]};
+    default:return {kind:'text',rows:[{t:'Enter PC Comm and',c:1},{t:'stop measurement?',c:1}],soft:['Yes',PW,RT]};
+    }
+  }
+  function lookup(name){
+    var g=byName(name);if(!g)return null;
+    return {on:s.power==='on'&&pumpOn(),shown:fmtV(toUnit(value())),unit:unit(),cur:s.set.measGas,curCf:gas().cf,cf:g.cf,same:s.set.measGas===name,sampling:s.env.source==='sample'};
+  }
+  return {lookup:lookup,gases:GASES,library:GASES,s:s,tick:tick,keyDown:keyDown,keyUp:keyUp,screen:screen,signal:signal,undo:undo,reset:reset,
+          enterProg:enterProg,startBoot:startBoot,
+          holdMode:function(){ if(s.critical)return; if(s.power==='off')startBoot(); else if(s.power==='on'&&s.view==='main'){s.view='shutdown';s.shut=0;powerOff();} }};
+}
+root.PIDSim=Sim;
+})(typeof window!=='undefined'?window:globalThis);
+/*CORE-END*/
+</script>
+
+<script>
+(function(){
+"use strict";
+var sim=window.PIDSim(), $=function(id){return document.getElementById(id);};
+var lcd=$('lcd'),ledL=$('ledL'),ledR=$('ledR'),veil=$('veil'),soundOn=true,ac=null,lastSig='',lastBeep=-1,lastCrit=null;
+
+function beep(f,d,v){
+  if(!soundOn)return;
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    if(ac.state==='suspended')ac.resume();
+    var o=ac.createOscillator(),g=ac.createGain();
+    o.type='square';o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(ac.destination);
+    o.start();o.stop(ac.currentTime+d);
+  }catch(e){}
+}
+var SV='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+var ICON={'@up':SV+'<path d="M12 20V5M6 11l6-6 6 6"/></svg>','@down':SV+'<path d="M12 4v15M6 13l6 6 6-6"/></svg>','@right':SV+'<path d="M3 12h17M14 6l6 6-6 6"/></svg>','@left':SV+'<path d="M21 12H4M10 6l-6 6 6 6"/></svg>',
+ '@bat':'<svg viewBox="0 0 16 24" width="13" height="20" aria-hidden="true"><rect x="5" y="1" width="6" height="3" fill="currentColor"/><rect x="2" y="4" width="12" height="19" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="7" width="6" height="3" fill="currentColor"/><rect x="5" y="12" width="6" height="3" fill="currentColor"/><rect x="5" y="17" width="6" height="3" fill="currentColor"/></svg>',
+ '@rf':SV+'<path d="M4 3h16l-8 9z"/><path d="M12 12v9"/></svg>',
+ '@pumpA':SV+'<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>',
+ '@pumpB':SV+'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg>',
+ '@pumpD':SV+'<circle cx="12" cy="12" r="9"/><path d="M9.5 8v8M14.5 8v8"/></svg>',
+ '@sig':'<svg viewBox="0 0 22 16" width="20" height="14" fill="currentColor" aria-hidden="true"><rect x="0" y="12" width="3" height="4"/><rect x="4.5" y="9" width="3" height="7"/><rect x="9" y="6" width="3" height="10"/><rect x="13.5" y="3" width="3" height="13"/><rect x="18" y="0" width="3" height="16"/></svg>',
+ '@stall':SV+'<circle cx="12" cy="12" r="9"/><path d="M12 6v7M12 17v.5"/></svg>',
+ '@log':SV+'<path d="M4 3h13l3 3v15H4z"/><path d="M8 3v6h7V3M8 21v-7h8v7"/></svg>',
+ '@pwr':SV+'<path d="M12 3v8"/><path d="M6.5 7a8 8 0 1 0 11 0"/></svg>','@bell':SV+'<path d="M8 16v-4a4 4 0 0 1 8 0v4l1.5 1.5h-11z"/><path d="M11 20h2M12 3v2M4 12h1.5M18.5 12H20M5.5 5.5l1.3 1.3M18.5 5.5l-1.3 1.3"/></svg>'};
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+function rowEl(r){
+  var d=el('div','row'+(r.c?' c':'')+(r.hl?' hl':'')+(r.big?' big':''));
+  if(r.dis)d.className+=' strike';
+  if(r.box)d.className+=' boxed';if(r.ind)d.className+=' ind';
+  if(r.radio)d.appendChild(el('i','rad'+(r.radio===2?' on':'')));
+  if(r.check)d.appendChild(el('i','chk'+(r.check===2?' on':'')));
+  if(r.cur!=null){
+    var a=el('span');a.appendChild(document.createTextNode(r.t.slice(0,r.cur)));
+    a.appendChild(el('span','cur',r.t.charAt(r.cur)));a.appendChild(document.createTextNode(r.t.slice(r.cur+1)));d.appendChild(a);
+  }else d.appendChild(el('span',null,r.t));
+  if(r.r!=null)d.appendChild(el('span','r',r.r));
+  return d;
+}
+function paint(sc,blink){
+  lcd.textContent='';
+  lcd.className='lcd'+(sc.kind==='off'?' off':sc.bl?'':' nolight');
+  if(sc.kind==='off')return;
+  var c=sc.contrast,op=Math.max(0.06,Math.min(1,(c-18)/20)),dk=Math.max(0,(c-46)/14)*0.9;
+  var inner=el('div','in');inner.style.opacity=op;
+  var head=el('div','l-head'),body=el('div','l-body'),soft=el('div','l-soft');
+  if(sc.kind==='reading'){
+    var pump=sc.pump==='on'?(blink?'PUMP >':'PUMP >>'):sc.pump==='stall'?(blink?'PUMP X':''):'PUMP -';
+    head.appendChild(el('span',null,sc.alarm?(blink?(sc.alarm==='PUMP'?'PUMP STALL':sc.alarm==='OVR'?'OVR  OVER RANGE':sc.alarm==='CAL'?'CAL':sc.alarm==='NEG'?'NEG':sc.alarm+' ALARM'):''):sc.toast));
+    var st=el('span','stat');st.innerHTML=(sc.rf?ICON['@rf']+ICON['@sig']:'')+ICON['@bat'];head.appendChild(st);
+    if(sc.ready){body.appendChild(el('div','row c big','Ready...'));body.appendChild(el('div','row c','Start sampling?'));}
+    else{var rd=el('div','read');rd.appendChild(el('span','v',sc.val));var uw=el('span','uw');uw.appendChild(el('span','ck',sc.calOk?'\u2713':'!'));uw.appendChild(el('span','u',sc.unit));rd.appendChild(uw);body.appendChild(rd);}
+    var gl=el('div','row');gl.appendChild(el('span',null,sc.gas));var pi=el('span','stat');
+    pi.innerHTML=(sc.pump==='stall'?(blink?ICON['@stall']:''):sc.pump==='on'?ICON[blink?'@pumpA':'@pumpB']:sc.pump==='duty'?ICON[blink?'@pumpA':'@pumpD']:ICON['@pumpA'])+(sc.log?ICON['@log']:'');
+    if(sc.pump==='off')pi.style.opacity=.45;
+    gl.appendChild(pi);body.appendChild(gl);
+  }else if(sc.kind==='icons'){
+    head.appendChild(el('b',null,sc.title));
+    var ir=el('div','icons');sc.icons.forEach(function(t,i){ir.appendChild(el('span',i===sc.sel?'on':null,t));});body.appendChild(ir);
+  }else{
+    if(sc.title)head.appendChild(el('b',null,sc.title));else head.style.display='none';
+    sc.rows.forEach(function(r){body.appendChild(rowEl(r));});
+  }
+  if(sc.corner){var cn=el('div','corner',sc.corner);body.appendChild(cn);}
+  if(!sc.soft){soft.style.display='none';sc.soft=[];}
+  sc.soft.forEach(function(t){var sp=el('span');if(ICON[t])sp.innerHTML=ICON[t];else sp.textContent=t;soft.appendChild(sp);});
+  inner.appendChild(head);inner.appendChild(body);inner.appendChild(soft);lcd.appendChild(inner);
+  if(dk>0){var d=el('div','dark');d.style.opacity=dk;lcd.appendChild(d);}
+}
+function showCritical(){
+  var c=sim.s.critical;
+  if(c===lastCrit)return;lastCrit=c;
+  if(c){
+    $('critWhat').textContent='Change: '+c.label+'\nFrom: '+c.from+'\nTo: '+c.to;
+    $('critWhat').style.whiteSpace='pre-wrap';
+    $('critWhy').textContent=c.why;
+    veil.classList.add('show');$('undoBtn').focus();
+    beep(400,0.5,0.08);
+  }else veil.classList.remove('show');
+}
+var prev=performance.now();
+function loop(){
+  var nowMs=performance.now(),rem=Math.min(10,(nowMs-prev)/1000);
+  if(rem<0.03)return;
+  prev=nowMs;
+  // advance in small steps so held-key timing stays exact even if the browser delays this loop
+  while(rem>0.0005){var stp=Math.min(0.1,rem);sim.tick(stp);rem-=stp;}
+  var sc=sim.screen(),blink=Math.floor(nowMs/350)%2===0,sig=JSON.stringify(sc)+blink;
+  if(sig!==lastSig){lastSig=sig;paint(sc,blink);}
+  var a=sim.signal(),ph=a.rate?nowMs/1000*a.rate:0,on=a.light&&(ph%1)<0.5&&!sim.s.critical;
+  ledL.classList.toggle('on',on);ledR.classList.toggle('on',on);
+  if(a.buzzer&&!sim.s.critical){var b=Math.floor(ph);if(b!==lastBeep){lastBeep=b;beep(2700,0.11,0.07);}}
+  $('torch').classList.toggle('on',sim.s.torch);
+  showCritical();
+}
+setInterval(loop,100);
+(function raf(){loop();if(window.requestAnimationFrame)requestAnimationFrame(raf);})();
+
+// keys
+Array.prototype.forEach.call(document.querySelectorAll('.key'),function(btn){
+  var k=btn.getAttribute('data-k');
+  function down(ev){ev.preventDefault();try{btn.setPointerCapture(ev.pointerId);}catch(e){}btn.classList.add('down');beep(1800,0.03,0.03);sim.keyDown(k);}
+  function up(ev){ev.preventDefault();btn.classList.remove('down');sim.keyUp(k);}
+  btn.addEventListener('pointerdown',down);
+  btn.addEventListener('pointerup',up);
+  btn.addEventListener('pointercancel',up);
+  btn.addEventListener('contextmenu',function(e){e.preventDefault();});
+});
+var kmap={y:'Y','+':'Y','=':'Y',m:'M',Enter:'M',n:'N','-':'N'};
+document.addEventListener('keydown',function(e){var k=kmap[e.key];if(k&&!e.repeat&&e.target.tagName!=='INPUT'&&e.target.tagName!=='BUTTON'&&e.target.tagName!=='SUMMARY'){sim.keyDown(k);}});
+document.addEventListener('keyup',function(e){var k=kmap[e.key];if(k)sim.keyUp(k);});
+
+$('lightBtn').addEventListener('click',function(){sim.s.torch=!sim.s.torch;this.setAttribute('aria-pressed',String(sim.s.torch));beep(1800,0.03,0.03);});
+$('soundBtn').addEventListener('click',function(){soundOn=!soundOn;this.setAttribute('aria-pressed',String(soundOn));this.textContent=soundOn?'Sound on':'Sound off';if(soundOn)beep(1800,0.05,0.04);});
+$('progBtn').addEventListener('click',function(){sim.enterProg();});
+$('pwrBtn').addEventListener('click',function(){beep(1800,0.03,0.03);sim.holdMode();});
+$('undoBtn').addEventListener('click',function(){sim.undo();});
+$('resetBtn').addEventListener('click',function(){sim.reset();});
+
+Array.prototype.forEach.call(document.querySelectorAll('#srcSeg button'),function(b){
+  b.addEventListener('click',function(){
+    sim.s.env.source=b.getAttribute('data-src');
+    Array.prototype.forEach.call(document.querySelectorAll('#srcSeg button'),function(x){x.setAttribute('aria-pressed',String(x===b));});
+  });
+});
+function concFromSlider(v){var x=16000*Math.pow(v/1000,3);return x<100?Math.round(x*2)/2:x<1000?Math.round(x/5)*5:Math.round(x/50)*50;}
+var cfSel=$('cfSel'),cfOut=$('cfOut'),lastCf='';
+sim.gases.forEach(function(g){var o=document.createElement('option');o.value=g.n;o.textContent=g.n+(g.cf===null?'  (no 10.6 eV factor)':'  (CF '+g.cf+')');cfSel.appendChild(o);});
+function fmtC(c){return c.toLocaleString('en-US');}
+function concLabel(){var n=cfSel.value;$('concOut').textContent=fmtC(sim.s.env.sample)+(n?' ppm of '+n:' ppm isobutylene equivalent');}
+function setSource(src){sim.s.env.source=src;Array.prototype.forEach.call(document.querySelectorAll('#srcSeg button'),function(x){x.setAttribute('aria-pressed',String(x.getAttribute('data-src')===src));});}
+function paintCf(){
+  var n=cfSel.value,html,c=fmtC(sim.s.env.sample);
+  if(!n)html='Pick a vapor and the monitor responds to it the way a 10.6 eV lamp would. With none picked, the slider is in isobutylene-equivalent ppm.';
+  else{
+    var r=sim.lookup(n);
+    if(!r.sampling)html='Choose \u201cVapor sample\u201d below to put '+n+' at the inlet.';
+    else if(r.cf===null)html='<span class="no">'+n+' has no 10.6 eV response in the MiniRAE 3000 library.</span> With '+c+' ppm at the inlet the monitor still shows about 0. It cannot warn you about this vapor.';
+    else if(!r.on)html='Turn the monitor on and let the pump run to see a reading. Correction factor for '+n+': <b>'+r.cf+'</b>';
+    else if(r.same)html='Inlet: <b>'+c+' ppm</b> of '+n+'.<br>The monitor is set to '+n+' (CF '+r.cf+'), so it reads the vapor 1:1 and shows <b>'+r.shown+' '+r.unit+'</b>.';
+    else html='Inlet: <b>'+c+' ppm</b> of '+n+'.<br>The monitor is set to '+r.cur+' (CF '+r.curCf+') and shows <b>'+r.shown+' '+r.unit+'</b>.<br>'+(r.curCf===1?'Multiply the reading by '+r.cf+' to get the '+n+' concentration, or set Meas. Gas to '+n+' to read it directly.':'The monitor is applying the factor for a different gas. Set Meas. Gas to '+n+' to read this vapor directly.');
+  }
+  if(html!==lastCf){lastCf=html;cfOut.innerHTML=html;}
+}
+cfSel.addEventListener('change',function(){sim.s.env.gas=cfSel.value;if(cfSel.value)setSource('sample');concLabel();});
+cfSel.addEventListener('change',paintCf);setInterval(paintCf,300);
+$('concRange').addEventListener('input',function(){sim.s.env.sample=concFromSlider(Number(this.value));$('concNum').value=sim.s.env.sample;concLabel();});
+$('concNum').addEventListener('input',function(){
+  var c=parseFloat(this.value);if(isNaN(c))return;c=Math.max(0,Math.min(16000,c));
+  sim.s.env.sample=c;$('concRange').value=Math.round(1000*Math.cbrt(c/16000));concLabel();
+});
+$('concNum').addEventListener('change',function(){this.value=sim.s.env.sample;});
+function multLabel(){var m=sim.s.env.mult;$('multOut').textContent=m===1?'1\u00d7 (real time)':m+'\u00d7 (15 min passes in '+(900/m<60?Math.round(900/m*10)/10+' s':Math.round(900/m/6)/10+' min')+')';}
+$('multRange').addEventListener('input',function(){sim.s.env.mult=Math.round(Math.pow(10,Number(this.value)/1000*3));$('multNum').value=sim.s.env.mult;multLabel();});
+$('multNum').addEventListener('input',function(){
+  var m=parseFloat(this.value);if(isNaN(m))return;m=Math.max(1,Math.min(1000,Math.round(m)));
+  sim.s.env.mult=m;$('multRange').value=Math.round(Math.log10(m)/3*1000);multLabel();
+});
+$('multNum').addEventListener('change',function(){this.value=sim.s.env.mult;});
+$('blockChk').addEventListener('change',function(){sim.s.env.blocked=this.checked;});
+
+// open in a realistic working state: powered on at the reading screen
+sim.reset();
+})();
+</script>
+</body>
+</html>
